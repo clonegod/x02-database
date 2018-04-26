@@ -1,0 +1,177 @@
+【单条插入、批量插入】
+
+# 创建实例，插入
+> var user = { "name":"alice", "age":20, "password":"123abc", "address":{ "province":"bj", "city":"bj"}, "favor":["apple","banana"]
+
+> user
+{
+        "name" : "alice",
+        "age" : 20,
+        "password" : "123abc",
+        "address" : {
+                "province" : "bj",
+                "city" : "bj"
+        },
+        "favor" : [
+                "apple",
+                "banana"
+        ]
+}
+
+> db.users.insert(user);
+
+> db.users.find({"name":"alice"})
+
+# 更新实体属性值，插入
+> user.name="bob";
+bob
+> user.age=23
+23
+> user.address={"province":"sc", "city":"meishan"}
+{ "province" : "sc", "city" : "meishan" }
+> user
+{
+        "name" : "bob",
+        "age" : 23,
+        "password" : "123abc",
+        "address" : {
+                "province" : "sc",
+                "city" : "meishan"
+        },
+        "favor" : [
+                "apple",
+                "banana"
+        ]
+}
+
+> db.users.insert(user);
+WriteResult({ "nInserted" : 1 })
+
+> db.users.find();
+{ "_id" : ObjectId("5a3c72774fb903ffd76a32b4"), "name" : "alice", "age" : 20, "password" : "123abc", "address" : { "province" : "bj", "city" : "bj" }, "favor" : [ "apple", "banana" ] }
+{ "_id" : ObjectId("5a3c73394fb903ffd76a32b5"), "name" : "bob", "age" : 23, "password" : "123abc", "address" : { "province" : "sc", "city" : "meishan" }, "favor" : [ "apple", "banana" ] }
+
+
+# 批量插入
+> for(var i=0; i<3; i++) { db.users.insert({"name":"user"+i}); }
+
+> db.users.find();
+{ "_id" : ObjectId("5a3c73fb4fb903ffd76a32b6"), "name" : "user0" }
+{ "_id" : ObjectId("5a3c73fb4fb903ffd76a32b7"), "name" : "user1" }
+{ "_id" : ObjectId("5a3c73fb4fb903ffd76a32b8"), "name" : "user2" }
+
+
+================================================================================
+
+【查询】
+
+# 单条件查询：>, >=, <, <=, !=, =
+对应到Mongo："$gt", "$gte", "$lt", "$lte", "$ne", "$eq" (或"没有特殊关键字") 
+
+	# 大于
+	> db.users.find({"age":{$gt:20}});
+
+	# 大于等于
+	> db.users.find({"age":{$gte:20}});
+
+	# 小于
+	> db.users.find({"age":{$lt:23}});
+
+	# 小于等于
+	> db.users.find({"age":{$lte:23}});
+
+	# 不等于
+	> db.users.find({"age":{$ne:23}});
+
+	# 等于
+	> db.users.find({"age":20});
+	> db.users.find({"age":{$eq:23}});
+
+
+
+
+# 多条件组合查询: AND, OR, IN, NotIn
+对应到Mongo："$and"(或"无关键字"), "$or", "$in"，"$nin" 
+
+# "password"="123abc" && "age"=20
+> db.users.find({"password":"123abc", "age":20});
+> db.users.find({$and:[{"password":"123abc"}, {"age":20}]});
+
+# address.province="bj" || "address.province"="sc"
+> db.users.find({$or:[{"address.province":"bj"}, {"address.province":"sc"}]});
+
+# address.province in ["bj", "sc"]
+> db.users.find({"address.province":{$in:["bj","sc"]}});
+
+# address.province not in ["bj", "sc"]
+> db.users.find({"address.province":{$nin:["bj","sc"]}});
+
+
+# 正则匹配
+> db.users.find({"name":/^u.*\d$/});
+> db.users.find({"name":/^a/, "age":{$gt:18}});
+> db.users.find({$or:[{"address.province":/^\w{2}$/}, {"name":/0$/}]});
+
+# 查询很复杂时，在$where中编写过滤逻辑
+> db.users.find({ $where: 
+	function() {     
+		var names=["alice", "bob"];     
+		if(Math.random() > 0.5) {     
+			return names.indexOf(this.name) > 0;     
+		} else {         
+			return this.age >= 20;     
+		}   
+	} 
+})；
+
+
+================================================================================
+
+【Update操作】
+1、整体更新
+> db.users.update({"name":"alice"}, {"name":"alice", "age":23})
+
+2、局部更新
+# $inc修改器，对数值类型字段进行运算
+> db.users.update({"name":"alice"}, {$inc:{"age":5}})
+{ "_id" : ObjectId("5a3c72774fb903ffd76a32b4"), "name" : "alice", "age" : 28 }
+
+# $set修改器，更新字段值
+> db.users.update({"name":"alice"}, {$set:{"age":5}})
+{ "_id" : ObjectId("5a3c72774fb903ffd76a32b4"), "name" : "alice", "age" : 5 }
+
+
+3、upsert插入/更新
+upsert操作：有则更新，无则插入，避免了判断是update还是add操作
+将update的第三个参数设为true即可。
+
+# 有则更新
+> db.users.update({"name":"alice"}, {$inc:{"age":10}}, true)
+> db.users.find()
+{ "_id" : ObjectId("5a3c72774fb903ffd76a32b4"), "name" : "alice", "age" : 15 }
+
+# 无则插入
+> db.users.update({"name":"cindy"}, {$inc:{"age":10}}, true)
+> db.users.find()
+{ "_id" : ObjectId("5a3c8b5c6f935afe32ca87ec"), "name" : "cindy", "age" : 10 }
+
+
+4、批量更新
+# 在mongodb中如果更新条件匹配多条，默认只更新第一条！如果必须批量更新，则将update的第四个参数设为true即可。
+> db.users.update({"name":/user/}, {$inc:{"age":20}}, true, true)
+> db.users.find()
+{ "_id" : ObjectId("5a3c8cde4fb903ffd76a32bc"), "name" : "user0", "age" : 20 }
+{ "_id" : ObjectId("5a3c8cde4fb903ffd76a32bd"), "name" : "user1", "age" : 20 }
+{ "_id" : ObjectId("5a3c8cde4fb903ffd76a32be"), "name" : "user2", "age" : 20 }
+
+================================================================================
+
+【Remove操作】
+1、单条remove
+> db.users.remove({"name":"bob"});
+
+2、多条remove
+> db.users.remove({"name":/user/});
+> db.users.remove({"age":{$gte:15}});
+> db.users.remove({$where:function() {return true}})
+> db.users.drop()

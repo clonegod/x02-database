@@ -1,0 +1,32 @@
+redis对事务仅提供非常有限的支持，不推荐使用。
+
+
+--- 开启事务、提交命令、执行队列中的命令
+127.0.0.1:6379> multi	# 开启事务
+OK
+127.0.0.1:6379> hmset user name alice age 20	# 事务环境下的命令被放入队列中
+QUEUED
+127.0.0.1:6379> exec	# 执行队列中的命令
+1) OK
+127.0.0.1:6379> hmget user name age
+1) "alice"
+2) "20"
+127.0.0.1:6379> 
+
+
+--- 事务的不足，不支持事务的整体回滚
+127.0.0.1:6379> multi	# 开启事务
+OK
+127.0.0.1:6379> hincrby user age 1	
+QUEUED
+127.0.0.1:6379> hincrby user name 1		# 对name 执行加1，命令错误
+QUEUED
+127.0.0.1:6379> exec	# 执行队列中的命令
+1) (integer) 21
+2) (error) ERR hash value is not an integer	
+
+127.0.0.1:6379> hget user age	# 错误命令之前的那些命令都会被提交，没有实现事务的整体回滚！！！
+"21"
+
+
+

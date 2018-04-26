@@ -1,0 +1,173 @@
+redis集群
+1、在redis3.0前，提供了sentinel工具来监控各master的状态，如果master异常，则会做主从切换，将slave提升为master，将恢复后的master作为slave。
+2、从redis3.0开始，开始支持集群的容错功能，并且配置简单。
+
+redis集群的优势：
+1、集群模式提供更高的可用性；
+2、数据分布式存储，不再是每个节点存储完全相同的一份数据拷贝，效率更高；
+3、数据分布式存储，将读写压力分摊到不同节点，减轻了节点的压力；
+
+【redis集群搭建】
+要求：至少三个Master节点 - 3主3从
+1、创建一个目录 redis-cluster ，在其下创建6个文件夹。
+	mkdir -p /usr/local/redis-cluster
+	cd !$	# !$表示上一个命令最后的那个参数
+	mkdir {7001..7006}
+
+2、复制redis.conf到对应的7001目录下
+	cp /usr/local/redis-3.2.11/redis.conf  /usr/local/redis-cluster/7001
+	
+3、以7001节点为例，修改redis.conf：
+	port 7001			#集群每个节点的端口号不同（如果在同一台虚拟机上配置）
+	bind 192.168.1.201	# 绑定节点的局域网ip
+	daemonize yes		#后台运行
+	
+	dir 	/usr/local/redis-cluster/7001	#工作目录
+	pidfile /usr/local/redis-cluster/7001/redis_7001.pid	#进程号存放路径
+	logfile /usr/local/redis-cluster/7001/redis_7001.log	#日志文件存放路径
+	
+	#save 900 1		# 关闭rdb
+	#save 300 10	# 关闭rdb
+	#save 60 10000	# 关闭rdb
+	
+	appendonly yes	# 开启aof日志功能
+	appendfsync always	# 每个写命令都立即写入磁盘保存
+	
+	cluster-enabled yes					# 启用集群模式
+	cluster-config-file nodes-7001.conf # 为集群中的每个节点指定一个唯一的配置文件（该文件由redis节点进行维护）
+	cluster-node-timeout 5000			#   设置集群节点间心跳连接的超时时间
+
+4、复制7001节点下的redis.conf到其它节点目录下
+	# -n 1 -> 告诉 xargs 命令每个命令行最多使用一个参数，并发送到 cp 命令中。
+	echo {7002..7006} | xargs -n 1 cp -v 7001/redis.conf 
+	
+5、批量修改其它节点的配置（使用sed命令进行替换）
+	[root@node1 redis-cluster]# sed -i 's/7001/7002/g' 7002/redis.conf                 
+	[root@node1 redis-cluster]# sed -i 's/7001/7003/g' 7003/redis.conf   
+	[root@node1 redis-cluster]# sed -i 's/7001/7004/g' 7004/redis.conf   
+	[root@node1 redis-cluster]# sed -i 's/7001/7005/g' 7005/redis.conf   
+	[root@node1 redis-cluster]# sed -i 's/7001/7006/g' 7006/redis.conf 	
+	
+6、由于redis集群需要使用ruby命令，因此安装ruby
+	yum -y install ruby rubygems
+
+	# 安装ruby和redis的接口
+	# error: redis requires Ruby version >= 2.2.2.
+	#gem install redis
+	gem install redis-3.3.5.gem
+	
+	# 安装ruby-2.2.4，参考：
+	https://tecadmin.net/install-ruby-2-2-on-centos-rhel/
+	
+
+7、分别启动6个redis实例，然后检查启动是否成功
+	echo /usr/local/redis-cluster/{7001..7006}/redis.conf | xargs -n 1 /usr/local/redis/bin/redis-server 
+	
+	ps -ef | grep redis
+	
+8、创建集群，进入redis3的安装目录，然后执行redis-trib.rb命令
+	cd /usr/local/redis-3.2.11/src
+	
+	#  --replicas 1 means that we want a slave for every master created.
+	echo 192.168.1.201:{7001..7006} | xargs ./redis-trib.rb create --replicas 1
+
+9、连接集群
+	连接到集群中任一节点都可以（节点间相互知道对方的配置与角色）
+	# -c 表示集群模式  -h 指定ip -p 指定端口
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7001
+	
+	# 查看集群信息（集群运行状态）
+	cluster info
+	
+	# 查看集群的节点列表（主节点分配的slot，从节点关联到的主节点）
+	cluster nodes
+	
+	# 关闭集群
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7001 shutdown;
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7002 shutdown;
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7003 shutdown;
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7004 shutdown;
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7005 shutdown;
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7006 shutdown;
+	
+	# 循环启动
+	for i in {7001..7006}; do /usr/local/redis/bin/redis-server /usr/local/redis-cluster/$i/redis.conf; sleep 1; done
+	
+	# 循环关闭
+	for i in {7001..7006}; do /usr/local/redis/bin/redis-cli $i shutdown; sleep 1; done
+
+10、重新创建集群
+	删除集群每个节点下的nodes-7001..7006配置文件，然后再重新创建集群。
+
+-------------------------------------------------------------
+创建集群，输出：
+>>> Creating cluster
+>>> Performing hash slots allocation on 6 nodes...
+Using 3 masters: 												# 3个master节点
+192.168.1.201:7001
+192.168.1.201:7002
+192.168.1.201:7003
+
+Adding replica 192.168.1.201:7004 to 192.168.1.201:7001  		# master节点对应的slave节点
+Adding replica 192.168.1.201:7005 to 192.168.1.201:7002
+Adding replica 192.168.1.201:7006 to 192.168.1.201:7003
+
+M: cdba7c9ad3613994ffc08b172adc5588516b56b1 192.168.1.201:7001
+   slots:0-5460 (5461 slots) master								# 分配每个master节点负责的slot
+M: a12b48a5d0876052a068d6661b074d088f110703 192.168.1.201:7002
+   slots:5461-10922 (5462 slots) master
+M: d681974426b40236f6b113f806546a28dd5afa2c 192.168.1.201:7003
+   slots:10923-16383 (5461 slots) master
+S: dab421b8eb85aa4086c51b1f9533e7ef3d377d99 192.168.1.201:7004
+   replicates cdba7c9ad3613994ffc08b172adc5588516b56b1
+S: 545b25eb421c768b4f0681d0418279e81cd6b73a 192.168.1.201:7005
+   replicates a12b48a5d0876052a068d6661b074d088f110703
+S: f71ba65c11ef2dccf4e0e58466c203b44d5e47a7 192.168.1.201:7006
+   replicates d681974426b40236f6b113f806546a28dd5afa2c
+Can I set the above configuration? (type 'yes' to accept): >>> Nodes configuration updated
+>>> Assign a different config epoch to each node
+>>> Sending CLUSTER MEET messages to join the cluster
+Waiting for the cluster to join...
+>>> Performing Cluster Check (using node 192.168.1.201:7001)
+M: cdba7c9ad3613994ffc08b172adc5588516b56b1 192.168.1.201:7001
+   slots:0-5460 (5461 slots) master
+   1 additional replica(s)
+M: d681974426b40236f6b113f806546a28dd5afa2c 192.168.1.201:7003
+   slots:10923-16383 (5461 slots) master
+   1 additional replica(s)
+S: dab421b8eb85aa4086c51b1f9533e7ef3d377d99 192.168.1.201:7004
+   slots: (0 slots) slave
+   replicates cdba7c9ad3613994ffc08b172adc5588516b56b1
+S: f71ba65c11ef2dccf4e0e58466c203b44d5e47a7 192.168.1.201:7006
+   slots: (0 slots) slave
+   replicates d681974426b40236f6b113f806546a28dd5afa2c
+M: a12b48a5d0876052a068d6661b074d088f110703 192.168.1.201:7002
+   slots:5461-10922 (5462 slots) master
+   1 additional replica(s)
+S: 545b25eb421c768b4f0681d0418279e81cd6b73a 192.168.1.201:7005
+   slots: (0 slots) slave
+   replicates a12b48a5d0876052a068d6661b074d088f110703
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+
+
+-------------------------------------------------------------
+【遇到的问题】
+Can I set the above configuration? (type 'yes' to accept): 
+./redis-trib.rb:818:in `yes_or_die': undefined method `chomp' for nil:NilClass (NoMethodError)
+        from ./redis-trib.rb:1295:in `create_cluster_cmd'
+        from ./redis-trib.rb:1701:in `<main>'	
+  
+解决办法：      
+# commented out the yes-or-die prompt in redis-trib.rb to solve the problem
+def yes_or_die(msg)
+    print "#{msg} (type 'yes' to accept): "
+    #STDOUT.flush
+    #if !(STDIN.gets.chomp.downcase == "yes")
+    #    xputs "*** Aborting..."
+    #    exit 1
+    #end
+end
+

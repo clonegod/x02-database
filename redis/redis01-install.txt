@@ -1,0 +1,45 @@
+Redis 3.x 版本安装
+
+下载地址：https://redis.io/download
+
+安装步骤：
+1、安装gcc，下载 redis-3.2.11.tar.gz 放到/usr/local/software目录下。
+
+2、解压到/usr/local目录下。  tar -xzvf redis-3.2.11.tar.gz -C /usr/local
+
+3、进入到解压目录，进行编译 make
+	make
+
+4、进入到src目录，进行安装 make install 
+	make install
+	
+5、建立两个文件夹存放redis命令和配置文件
+	mkdir -p /usr/local/redis/etc
+	mkdir -p /usr/local/redis/bin
+
+6、把redis-3.2.11下的redis.conf 复制到/usr/local/redis/etc 目录
+	cp -a redis.conf /usr/local/redis/etc
+
+7、把redis-3.2.11/src下的几个shell脚本移动到/usr/local/redis/bin 目录
+	mv  mkreleasehdr.sh redis-benchmark redis-check-aof redis-check-rdb  redis-cli redis-server /usr/local/redis/bin
+
+8、启动，指定配置文件路径
+	cd /usr/local/redis
+	启动redis，指定配置文件: bin/redis-server etc/redis.conf
+
+9、修改redis.conf
+	配置后台方式运行redis服务：  daemonize yes
+	配置工作目录（存储DB文件，aof文件的目录）：dir /usr/loca/redis/etc	
+		说明；将持久化文件放到etc配置的好处是，将不同实例的存储文件关联到对应配置目录下，便于管理。
+	
+10、验证启动是否成功
+	ps -ef | grep redis
+	netstat -tnlp | grep 6379
+	进入redis客户端命令行，
+		bin/redis-cli	
+		退出 quit
+	关闭redis服务：
+		pkill redis-server
+		kill 进程号
+		/usr/local/redis/bin/redis-cli shutdown
+	

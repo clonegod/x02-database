@@ -1,0 +1,52 @@
+主从复制 - 主节点与从节点存储完整的数据，主从架构解决了高可用问题。
+	主从架构1 
+		一主多从 Master + Slave1 + Slave2 + ...：
+		1、读写分离-master负责写操作，slave提供只读服务，减轻主数据库的压力。
+			默认的情况下，从属数据库不支持数据的读取，驱动中提供了一个叫做“slaveOkay"的配置，让我们可以显示的读取从属数据库。
+		2、缺点：存在单点问题，主库宕机，无法提供服务。
+	# master
+	mongodb --dbpath='XXX' --master
+	
+	# slave1
+	mongod --dbpath=xxxx --port=8888 --slave --source=127.0.0.1:27017
+	
+	# slave2 
+	mongod --dbpath=xxxx --port=8888 --slave
+	# 主或者从属数据库中都有一个叫做local的集合，主要是用于存放内部复制信息。
+	# 将slave绑定到master
+	> db.sources.insert({"host":"127.0.0.1"});
+	
+	主从架构2 
+		多主 master1 + master2 + master3 + ...
+		1、双机热备份-解决了单点问题：任意master宕机，集群中就会推选出一个从属数据库作为主数据库，具备failover的功能。
+		2、缺点：当数据超过单机处理能力时，比如数据量达到TB级别时,该架构就无法应对了。
+	# 集群需要有一个名称来表示：mongoCluster
+	# --replSet配置mongoCluster集群下的其它副本节点
+	mongodb --dbpath='XXX' --port 3333 --replSet mongoCluster/127.0.0.1:4444
+	mongodb --dbpath='XXX' --port 4444 --replSet mongoCluster/127.0.0.1:3333
+	
+	# 初始副本集，初始完成后集群会自动选举出一个Master。
+	mongo 127.0.0.1:3333/admin
+	> db.runCommand({
+		"replSetInitiate": {
+			"id":"mongoCluster",
+			"members":[
+				{"_id":1, "host":"127.0.0.1:3333"},
+				{"_id":2, "host":"127.0.0.1:4444"}
+			]
+		}
+	})
+	
+	# 仲裁服务器,仲裁只参与投票选举.指定mongoCluster集群中的任一个服务器端口
+	mongodb --dbpath='XXX' --port 5555 --replSet mongoCluster/127.0.0.1:3333
+	
+	# 添加仲裁服务器，在admin集合中使用rs.addArb()追加
+	mongo 127.0.0.1:3333/admin
+	> rs.addArb("127.0.0.1:5555");
+	
+	# 使用rs.status()来查看下集群中的服务器状态，图中我们可以清楚的看到谁是主，还是从，还是仲裁
+	> rs.status()
+	
+	
+	
+	

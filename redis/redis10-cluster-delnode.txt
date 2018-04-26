@@ -1,0 +1,84 @@
+从集群移除节点，被移除的节点会自动关闭。
+
+步骤：
+	1、先移除slave节点，再移除master节点。
+	2、slave节点可直接使用del-node命令移除。
+	3、master节点必须先进行reshard，将slot归还给集群，然后才能使用del-node命令从集群中移除。
+
+----------------------------------------------
+cd /usr/local/redis-3.2.11/src
+
+【移除slave节点】
+
+./redis-trib.rb del-node 192.168.1.201:7008 70eeb386c5ee29bcfb3f058d2ba0b4e71bbacf99
+	
+----------------------------------------------
+
+【移除master节点】
+	
+# master需要先将slot移动到其它master节点，之后才能从集群中移除，避免数据丢失！
+./redis-trib.rb del-node 192.168.1.201:7007 31f2f9a4f627634968ee35b98a21cd8501a502b9
+>>> Removing node 31f2f9a4f627634968ee35b98a21cd8501a502b9 from cluster 192.168.1.201:7007
+[ERR] Node 192.168.1.201:7007 is not empty! Reshard data away and try again.
+
+
+# 从新分配slot，将7007的slot归还给集群
+./redis-trib.rb reshard 192.168.1.201:7007
+
+	>>> Performing Cluster Check (using node 192.168.1.201:7007)
+	M: 31f2f9a4f627634968ee35b98a21cd8501a502b9 192.168.1.201:7007
+	   slots:0-98,5461-5561,10923-11021 (299 slots) master	# 7007一共有299个slot
+	   0 additional replica(s) 
+	   
+How many slots do you want to move (from 1 to 16384)? 299
+
+# 将7007上的所有slot全部分配给7001，指定7001的id
+What is the receiving node ID? cdba7c9ad3613994ffc08b172adc5588516b56b1	
+	Please enter all the source node IDs.
+	  Type 'all' to use all the nodes as source nodes for the hash slots.
+	  Type 'done' once you entered all the source nodes IDs.
+
+# 指定slot的源，即7007的id
+Source node #1:31f2f9a4f627634968ee35b98a21cd8501a502b9
+Source node #2:done
+
+# 确认slot分配
+Do you want to proceed with the proposed reshard plan (yes/no)? yes
+
+	Moving slot 0 from 192.168.1.201:7007 to 192.168.1.201:7001: 
+	Moving slot 5561 from 192.168.1.201:7007 to 192.168.1.201:7001: ..
+	Moving slot 11021 from 192.168.1.201:7007 to 192.168.1.201:7001: .
+
+# 7007的slot已经全部归还到集群，此时可以从集群中移除7007节点
+[root@node1 src]# ./redis-trib.rb del-node 192.168.1.201:7007 31f2f9a4f627634968ee35b98a21cd8501a502b9
+>>> Removing node 31f2f9a4f627634968ee35b98a21cd8501a502b9 from cluster 192.168.1.201:7007
+>>> Sending CLUSTER FORGET messages to the cluster...
+>>> SHUTDOWN the node.
+
+
+---------------------------
+
+# 验证7007,7008是否从cluster移除成功
+
+192.168.1.201:7003> cluster info
+cluster_state:ok
+cluster_slots_assigned:16384
+cluster_slots_ok:16384
+cluster_slots_pfail:0
+cluster_slots_fail:0
+cluster_known_nodes:6
+cluster_size:3
+cluster_current_epoch:8
+cluster_my_epoch:3
+cluster_stats_messages_sent:53828
+cluster_stats_messages_received:53764
+
+
+192.168.1.201:7003> cluster nodes
+dab421b8eb85aa4086c51b1f9533e7ef3d377d99 192.168.1.201:7004 slave cdba7c9ad3613994ffc08b172adc5588516b56b1 0 1513619518715 8 connected
+545b25eb421c768b4f0681d0418279e81cd6b73a 192.168.1.201:7005 slave a12b48a5d0876052a068d6661b074d088f110703 0 1513619519317 5 connected
+a12b48a5d0876052a068d6661b074d088f110703 192.168.1.201:7002 master - 0 1513619517703 2 connected 5562-10922
+f71ba65c11ef2dccf4e0e58466c203b44d5e47a7 192.168.1.201:7006 slave d681974426b40236f6b113f806546a28dd5afa2c 0 1513619519218 6 connected
+d681974426b40236f6b113f806546a28dd5afa2c 192.168.1.201:7003 myself,master - 0 0 3 connected 11022-16383
+cdba7c9ad3613994ffc08b172adc5588516b56b1 192.168.1.201:7001 master - 0 1513619518311 8 connected 0-5561 10923-11021
+  

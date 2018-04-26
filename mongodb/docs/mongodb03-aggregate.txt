@@ -1,0 +1,197 @@
+【高级操作】
+聚合，游标。
+
+一： 聚合
+      常见的聚合操作：count，distinct，group，mapReduce。
+	  
+# count
+	db.users.insert({"name":"alice", "age":20});
+	db.users.insert({"name":"bob", "age":25});
+	db.users.insert({"name":"cindy", "age":23});
+	db.users.insert({"name":"david", "age":20});
+	db.users.insert({"name":"ella", "age":25});
+	db.users.insert({"name":"frank", "age":25});
+
+> db.users.find()
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c4"), "name" : "alice", "age" : 20 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c5"), "name" : "bob", "age" : 25 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c6"), "name" : "cindy", "age" : 23 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c7"), "name" : "david", "age" : 20 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c8"), "name" : "ella", "age" : 25 }
+{ "_id" : ObjectId("5a3c904f4fb903ffd76a32c9"), "name" : "frank", "age" : 25 }
+>
+
+# 统计集合中的文档数
+> db.users.count()
+6
+
+
+# distinct
+	# 基于文档中某个字段进行去重
+> db.users.distinct("age");
+
+
+
+# group  分组统计
+	# key：  分组字段。
+	# initial: 初始化分组结果的存储容器。不同的组的初始化都是调用同一个initial函数。
+	# $reduce: 这个函数的第一个参数是当前的文档对象，第二个参数是上一次reduce后的聚合对象。比如，第1次为initial中的{”perosn“：[]}。通过$reduce来完成对每个文档对象的聚合。
+> db.users.group({
+... "key":{"age":true},
+... "initial":{"userG":[]},
+... "$reduce":function(cur,prev) {
+...      prev.userG.push(cur.name);
+... }
+... });
+[
+        {
+                "age" : 20,
+                "userG" : [
+                        "alice",
+                        "david"
+                ]
+        },
+        {
+                "age" : 25,
+                "userG" : [
+                        "bob",
+                        "ella",
+                        "frank"
+                ]
+        },
+        {
+                "age" : 23,
+                "userG" : [
+                        "cindy"
+                ]
+        }
+]
+
+
+# 分组统计时：设置过滤条件，在统计结果中增加其它属性
+> db.users.group({
+...  "key":{"age":true},
+...  "initial":{"result":[]},
+...  "$reduce":function(cur,out) {
+...        out.result.push(cur.name);
+...   },
+...   "condition":{"age":{$lt:25}},
+...   "finalize":function(out) {
+... 		out.count=out.result.length;
+...   }
+... });
+
+[
+        {
+                "age" : 20,
+                "result" : [
+                        "alice",
+                        "david"
+                ],
+                "count" : 2
+        },
+        {
+                "age" : 23,
+                "result" : [
+                        "cindy"
+                ],
+                "count" : 1
+        }
+]
+>
+
+
+# mapReduce
+
+var fn_map = function(){
+		emit(this.age, {"count":1})
+	};
+	
+var fn_reduce = function(key, array){
+		var result = {"count":0};
+		for(var i=0; i<array.length; i++) {
+			result.count += array[i].count;
+		}
+		return result;
+	};
+	
+db.users.mapReduce(fn_map, fn_reduce, {"out":"collection"});
+
+# 或者，使用匿名函数
+db.users.mapReduce(function(){
+		emit(this.age, {"count":1})
+	}, function(key, array){
+		var result = {"count":0};
+		for(var i=0; i<array.length; i++) {
+			result.count += array[i].count;
+		}
+		return result;
+	}, {
+		"out":"collection"
+	}
+);
+
+
+# 输出
+{
+        "result" : "collection",
+        "timeMillis" : 858,
+        "counts" : {
+                "input" : 6,
+                "emit" : 6,
+                "reduce" : 2,
+                "output" : 3
+        },
+        "ok" : 1
+}
+
+# 查看结果
+> db.collection.find();
+{ "_id" : 20, "value" : { "count" : 2 } }
+{ "_id" : 23, "value" : { "count" : 1 } }
+{ "_id" : 25, "value" : { "count" : 3 } }
+>
+
+
+####游标
+> var list = db.users.find();
+>
+> list.forEach(function(e) {
+... print(e.name);
+... })
+alice
+bob
+cindy
+david
+ella
+frank
+>
+> list	# ---> 游标已销毁，所以这里再次访问list变量，已没有数据返回。
+>
+
+
+# 分页，排序
+> db.users.find()
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c4"), "name" : "alice", "age" : 20 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c5"), "name" : "bob", "age" : 25 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c6"), "name" : "cindy", "age" : 23 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c7"), "name" : "david", "age" : 20 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c8"), "name" : "ella", "age" : 25 }
+{ "_id" : ObjectId("5a3c904f4fb903ffd76a32c9"), "name" : "frank", "age" : 25 }
+
+> db.users.find().sort({"age":1})
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c4"), "name" : "alice", "age" : 20 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c7"), "name" : "david", "age" : 20 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c6"), "name" : "cindy", "age" : 23 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c5"), "name" : "bob", "age" : 25 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c8"), "name" : "ella", "age" : 25 }
+{ "_id" : ObjectId("5a3c904f4fb903ffd76a32c9"), "name" : "frank", "age" : 25 }
+
+> db.users.find().sort({"age":1}).skip(2)
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c6"), "name" : "cindy", "age" : 23 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c5"), "name" : "bob", "age" : 25 }
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c8"), "name" : "ella", "age" : 25 }
+{ "_id" : ObjectId("5a3c904f4fb903ffd76a32c9"), "name" : "frank", "age" : 25 }
+
+> db.users.find().sort({"age":1}).skip(2).limit(1)
+{ "_id" : ObjectId("5a3c904e4fb903ffd76a32c6"), "name" : "cindy", "age" : 23 }

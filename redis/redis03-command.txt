@@ -1,0 +1,29 @@
+keys pattern	按通配符"*"查询key
+	
+exists key [key ...]	判断key是否存在
+
+expire key seconds	设置key的过期时间
+
+persist key	持久化key
+
+select index	选择数据库（默认支持16个独立的库 0-15）
+
+move key db	将当前库的key移到另一个库
+
+randomkey	随机返回当前数据库的一个key
+
+rename key newkey	重命名key
+
+info	查看当前redis实例的状态信息
+	Server、Clients、Memory、Persistence、Stats、Replication、CPU、Cluster、Keyspace
+
+config get *	查看redis配置文件的属性配置
+
+dbsize 查看当前数据库的key个数	
+	
+flushdb	清空当前数据库所有的key
+
+flushall	清空所有数据库（0-15）下的key
+
+
+

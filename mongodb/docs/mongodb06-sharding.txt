@@ -1,0 +1,39 @@
+分片技术 - 数据分散存储到不同的节点，提供水平可扩展的能力，解决了单机性能问题。
+	mongodb里面存在另一种集群，就是分片技术。
+	
+	mongos： mongos就是一个路由服务器，维护数据和分片的映射关系，以及相应的配置信息都保存在"config服务器"上。
+    mongod:   普通的数据库实例，提供具体数据的存储服务。
+	
+	工作流程：client -> mongos + config -> mongod1, mongod2,...
+		client直接跟mongos打交道
+		mongos从config服务器获取mongod实例的相关信息（服务地址，使用哪个键进行数据分片等）
+		将client的请求转发到对应的mongod实例上
+	
+	# 1、启动config服务器。因为mongos要把mongod实例的配置放到config服务器里。
+	mongodb --dbpath=/usr/local/mongodb/data/config --port 8000
+	
+	# 2、开启mongos服务器。注意：开启的是mongos，不是mongod，同时指定config服务器。
+	mongos --port 3000 --configdb=127.0.0.1:8000
+	
+	# 3、启动两个mongod实例来存储数据。
+	mongodb --dbpath=/usr/local/mongodb/data/4001 --port 4001
+	mongodb --dbpath=/usr/local/mongodb/data/4002 --port 4002
+	
+	# 4、服务配置。
+	# 4.1 进入mongos，添加分片
+	mongo 127.0.0.1:3000/admin
+	mongos> db.runCommand({"addshard":"127.0.0.1:4001",allowLocal:true})
+	mongos> db.runCommand({"addshard":"127.0.0.1:4002",allowLocal:true})
+	
+	# 4.2 配置分片策略
+	mongo 127.0.0.1:3000/admin
+	
+	# 开启数据库分片功能.这里开启test数据库的分片.
+	mongos> db.runCommand({"enablesharding":"test"})
+	
+	# 指定对哪个集合进行分片，以及分片时使用哪个字段作为key
+	# 这里指定对test库的users集合进行分片,使用name字段作为分片的key
+	mongos> db.runCommand({"shardcollection":"test.users", "key":{"name":1} })
+	
+	# 5、查看分片结果
+	# 插入10w记录，然后通过printShardingStatus命令查看mongodb的数据分片情况。

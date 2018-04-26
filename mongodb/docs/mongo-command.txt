@@ -1,0 +1,76 @@
+# 查看数据库版本
+db.version()
+
+# 查看数据库
+db.stats()
+
+
+# 查看当前所在数据库
+db
+
+# 切换数据库
+use testdb
+
+
+# 查看当前数据库下的表
+show collections
+
+# 删除表
+db.users.drop()
+
+# 查看数据库表
+db.system.users.stats()
+
+
+
+# db的帮助文档
+db.help();
+help
+        db.help()                    help on db methods
+        db.mycoll.help()             help on collection methods
+        sh.help()                    sharding helpers
+        rs.help()                    replica set helpers
+        help admin                   administrative help
+        help connect                 connecting to a db help
+        help keys                    key shortcuts
+        help misc                    misc things to know
+        help mr                      mapreduce
+
+        show dbs                     show database names
+        show collections             show collections in current database
+        show users                   show users in current database
+        show profile                 show most recent system.profile entries with time >= 1ms
+        show logs                    show the accessible logger names
+        show log [name]              prints out the last segment of log in memory, 'global' is default
+        use <db_name>                set current database
+        db.foo.find()                list objects in collection foo
+        db.foo.find( { a : 1 } )     list objects in foo where a == 1
+        it                           result of the last line evaluated; use to further iterate
+        DBQuery.shellBatchSize = x   set default number of items to display on shell
+        exit                         quit the mongo shell
+
+
+# 表的帮助，格式：db.表名.help()
+db.user.help()
+
+    db.test.find({id:10})          返回test数据集ID=10的数据集  
+    db.test.find({id:10}).count()  返回test数据集ID=10的数据总数  
+    db.test.find({id:10}).limit(2) 返回test数据集ID=10的数据集从第二条开始的数据集  
+    db.test.find({id:10}).skip(8)  返回test数据集ID=10的数据集从0到第八条的数据集  
+    db.test.find({id:10}).limit(2).skip(8)  返回test数据集ID=1=的数据集从第二条到第八条的数据  
+    db.test.find({id:10}).sort()   返回test数据集ID=10的排序数据集  
+    db.test.findOne([query])       返回符合条件的一条数据  
+    db.test.getDB()                返回此数据集所属的数据库名称  
+    db.test.getIndexes()           返回些数据集的索引信息  
+    db.test.group({key:...,initial:...,reduce:...[,cond:...]})    返回分组信息  
+    db.test.mapReduce(mayFunction,reduceFunction,<optional params>)  这个有点像存储过程  
+    db.test.remove(query)                      在数据集中删除一条数据  
+    db.test.renameCollection(newName)          重命名些数据集名称  
+    db.test.save(obj)                          往数据集中插入一条数据  
+    db.test.stats()                            返回此数据集的状态  
+    db.test.storageSize()                      返回此数据集的存储大小  
+    db.test.totalIndexSize()                   返回此数据集的索引文件大小  
+    db.test.totalSize()                        返回些数据集的总大小  
+    db.test.update(query,object[,upsert_bool]) 在此数据集中更新一条数据  
+    db.test.validate()                         验证此数据集  
+    db.test.getShardVersion()                  返回数据集共享版本号  

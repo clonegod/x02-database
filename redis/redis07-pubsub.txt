@@ -1,0 +1,39 @@
+redis发布与订阅
+	redis提供了简单的发布订阅功能。
+	一般仅使用redis的发布订阅功能来实现集群节点间比较简单的发布订阅功能，对于复杂的发布订阅还是要依靠消息队列来完成。
+	
+发布订阅的使用场景：
+	1、发布通知消息，比如将某个节点上发生的修改通知到其它节点，让其它节点进行相应更新操作；
+	2、集群内部更新配置信息；比如，某个节点上的配置文件发生更新后，通过pubsub机制，将更新后的配置同步到其它节点。
+		
+
+【订阅】
+	命令语法：subscribe [频道] 进行订阅监听
+
+	127.0.0.1:6379> subscribe channel-cctv channel-mtv
+	Reading messages... (press Ctrl-C to quit)
+	1) "subscribe"		
+	2) "channel-cctv"	# 订阅频道"channel-cctv"成功
+	3) (integer) 1
+	
+	1) "subscribe"
+	2) "channel-mtv"	# 订阅频道"channel-mtv"成功
+	3) (integer) 2
+	
+	1) "message"
+	2) "channel-cctv"	# 收到"channel-cctv"发布的消息
+	3) "7 News"
+	
+	1) "message"
+	2) "channel-mtv"	# 收到"channel-mtv"发布的消息
+	3) "Music"
+	
+【发布】
+	命令语法：publish [频道] [发布内容] 进行发布消息广播
+	
+	127.0.0.1:6379> publish channel-cctv "7 News"	# 往频道 channel-cctv 发布消息
+	(integer) 1
+	127.0.0.1:6379> publish channel-mtv "Music"		# 往频道 channel-mtv 发布消息
+	(integer) 1
+
+

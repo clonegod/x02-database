@@ -1,0 +1,159 @@
+redis cluster - 集群扩容 
+
+水平扩展，增加新节点到集群。
+	向集群中加入1个新的主节点，并为该主节点配置一个从节点。
+
+--------------------------------------------------------------------
+【配置2个新的节点】
+# 7007 作为新的主节点， 7008作为7007的slave节点
+mkdir 7007 7008
+
+# ---> 配置7007节点
+cp /usr/local/redis-3.2.11/redis.conf  /usr/local/redis-cluster/7007
+
+vi redis.conf
+----
+port 7001		
+bind 192.168.1.201	
+daemonize yes
+
+dir 	/usr/local/redis-cluster/7001
+pidfile /usr/local/redis-cluster/7001/redis_7001.pid
+logfile /usr/local/redis-cluster/7001/redis_7001.log
+
+#save 900 1
+#save 300 10
+#save 60 10000
+
+appendonly yes
+appendfsync always
+
+cluster-enabled yes
+cluster-config-file nodes-7001.conf
+cluster-node-timeout 5000
+----
+
+# 批量替换
+:%s/7001/7007/g
+
+------------------------------------------------------
+# ---> 配置7008节点
+
+cp 7007/redis.conf 7008/
+
+vi 7008/redis.conf
+
+# 批量替换
+:%s/7001/7007/g
+
+
+------------------------------------------------------
+
+# 启动7007,7008 两个节点
+/usr/local/redis/bin/redis-server 7007/redis.conf 
+/usr/local/redis/bin/redis-server 7008/redis.conf 
+
+
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+
+【新增主节点，并加入到集群中】
+
+#  add-node        new_host:new_port existing_host:existing_port
+/usr/local/redis-3.2.11/src/redis-trib.rb add-node 192.168.1.201:7007 192.168.1.201:7001 
+
+---
+192.168.1.201:7003> cluster nodes
+dab421b8eb85aa4086c51b1f9533e7ef3d377d99 192.168.1.201:7004 slave cdba7c9ad3613994ffc08b172adc5588516b56b1 0 1513616501411 4 connected
+545b25eb421c768b4f0681d0418279e81cd6b73a 192.168.1.201:7005 slave a12b48a5d0876052a068d6661b074d088f110703 0 1513616502482 5 connected
+a12b48a5d0876052a068d6661b074d088f110703 192.168.1.201:7002 master - 0 1513616501956 2 connected 5461-10922
+f71ba65c11ef2dccf4e0e58466c203b44d5e47a7 192.168.1.201:7006 slave d681974426b40236f6b113f806546a28dd5afa2c 0 1513616502990 6 connected
+d681974426b40236f6b113f806546a28dd5afa2c 192.168.1.201:7003 myself,master - 0 0 3 connected 10923-16383
+cdba7c9ad3613994ffc08b172adc5588516b56b1 192.168.1.201:7001 master - 0 1513616502990 1 connected 0-5460
+# 新加入的master节点
+31f2f9a4f627634968ee35b98a21cd8501a502b9 192.168.1.201:7007 master - 0 1513616500909 0 connected
+
+
+【为主节点设置从节点，并加入到集群中】
+
+#  add-node        new_host:new_port existing_host:existing_port  --slave --master-id <arg>
+/usr/local/redis-3.2.11/src/redis-trib.rb add-node --slave --master-id 31f2f9a4f627634968ee35b98a21cd8501a502b9 192.168.1.201:7008 192.168.1.201:7007
+
+
+# 另一种设置从节点的方式：
+1、登陆到从节点7008的客户端  
+	/usr/local/redis/bin/redis-cli -c -h 192.168.1.201 -p 7008
+2、将当前客户端所属的redis实例设置为指定master节点的slave  
+	cluster replicate <master-id>
+
+---
+# 验证slave设置是否成功
+192.168.1.201:7003> cluster nodes
+
+# 7008 设置为7007的slave了
+70eeb386c5ee29bcfb3f058d2ba0b4e71bbacf99 192.168.1.201:7008 slave 31f2f9a4f627634968ee35b98a21cd8501a502b9 0 1513616847031 7 connected
+dab421b8eb85aa4086c51b1f9533e7ef3d377d99 192.168.1.201:7004 slave cdba7c9ad3613994ffc08b172adc5588516b56b1 0 1513616846524 4 connected
+545b25eb421c768b4f0681d0418279e81cd6b73a 192.168.1.201:7005 slave a12b48a5d0876052a068d6661b074d088f110703 0 1513616846928 5 connected
+a12b48a5d0876052a068d6661b074d088f110703 192.168.1.201:7002 master - 0 1513616846019 2 connected 5461-10922
+f71ba65c11ef2dccf4e0e58466c203b44d5e47a7 192.168.1.201:7006 slave d681974426b40236f6b113f806546a28dd5afa2c 0 1513616846524 6 connected
+d681974426b40236f6b113f806546a28dd5afa2c 192.168.1.201:7003 myself,master - 0 0 3 connected 10923-16383
+cdba7c9ad3613994ffc08b172adc5588516b56b1 192.168.1.201:7001 master - 0 1513616847032 1 connected 0-5460
+31f2f9a4f627634968ee35b98a21cd8501a502b9 192.168.1.201:7007 master - 0 1513616847535 7 connected
+
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+
+【为新的master节点分配slot】
+
+./redis-trib.rb reshard 192.168.1.201 7001
+
+
+[OK] All 16384 slots covered.
+# 为新的master分配300个slot
+How many slots do you want to move (from 1 to 16384)? 300	
+
+# 新的master在集群中的id
+What is the receiving node ID? 31f2f9a4f627634968ee35b98a21cd8501a502b9
+
+# 指定从哪些已有的master上分配slot给新的master
+# all: 从其它master节点平均分配slot给新的master节点
+Please enter all the source node IDs.
+  Type 'all' to use all the nodes as source nodes for the hash slots.
+  Type 'done' once you entered all the source nodes IDs.
+Source node #1:all
+
+	Moving slot 0 from cdba7c9ad3613994ffc08b172adc5588516b56b1
+	......
+	Moving slot 5561 from a12b48a5d0876052a068d6661b074d088f110703
+	......
+	Moving slot 11020 from d681974426b40236f6b113f806546a28dd5afa2c
+
+# 是否确认slot分配
+Do you want to proceed with the proposed reshard plan (yes/no)? yes
+
+
+192.168.1.201:7003> cluster nodes
+70eeb386c5ee29bcfb3f058d2ba0b4e71bbacf99 192.168.1.201:7008 slave 31f2f9a4f627634968ee35b98a21cd8501a502b9 0 1513617542108 7 connected
+# 7007 被分配了3段slot
+31f2f9a4f627634968ee35b98a21cd8501a502b9 192.168.1.201:7007 master - 0 1513617544140 7 connected 0-98 5461-5561 10923-11021
+
+
+------------------------------------------------------
+redis cluster管理工具redis-trib.rb详解：
+	http://weizijun.cn/2016/01/08/redis%20cluster%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7redis-trib-rb%E8%AF%A6%E8%A7%A3/
+
+
+redis-trib.rb具有以下功能：
+	1、create：创建集群
+	2、check：检查集群
+	3、info：查看集群信息
+	4、fix：修复集群
+	5、reshard：在线迁移slot
+	6、rebalance：平衡集群节点slot数量
+	7、add-node：将新节点加入集群
+	8、del-node：从集群中删除节点
+	9、set-timeout：设置集群节点间心跳连接的超时时间
+	10、call：在集群全部节点上执行命令
+	11、import：将外部redis数据导入集群

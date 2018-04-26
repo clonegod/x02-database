@@ -1,0 +1,188 @@
+修改redis.conf
+【设置后台运行】
+	daemonize yes
+	
+【配置日志】
+	logfile "/usr/local/redis/etc/redis.log"
+	
+【配置工作目录】
+	配置工作目录（存储DB文件，aof文件的目录）
+	说明：将持久化文件放到etc配置的好处是，将不同实例的存储文件关联到对应配置目录下，便于管理。
+	dir /usr/loca/redis/etc
+	
+【绑定ip地址】
+	绑定局域网ip地址，否则其它节点无法访问
+	bind 127.0.0.1 192.168.1.201 	# 默认仅绑定到本地回环地址上
+	#bind 127.0.0.1 192.168.1.202 	# 默认仅绑定到本地回环地址上
+	#bind 127.0.0.1 192.168.1.203 	# 默认仅绑定到本地回环地址上
+
+【安全性】
+	配置密码保护
+		启用密码保护	requirepass 123456
+	
+	redis-cli命令行密码认证
+		进入命令行之后认证：auth 123456
+		登陆redis-cli的时候直接认证：/usr/local/redis/bin/redis-cli -a 123456	
+	
+	java客户端密码认证
+	
+---------------------------------------------------------
+
+【主从复制】
+https://www.digitalocean.com/community/tutorials/how-to-configure-a-redis-cluster-on-centos-7
+https://www.data-essential.com/setup-a-secured-redis-cluster-on-centos7/
+
+主从复制的特点：
+1、主节点可读可写，从节点只读-readonly。
+2、Master可以配置多个Slave
+3、多个Slave可以连接同一个Master
+4、主从复制不会阻塞Master。在同步数据的时候，Master可以继续处理client的请求。
+5、提供系统的伸缩性
+
+主从复制的过程：
+1、slave与Master建立连接，发送sync同步命令
+2、master开启一个后台进程，将数据库快照保存到文件，同时master主进程会开始收集新写入的命令并缓存
+3、后台完成保存后，将文件发送给slave
+4、slave接收并保存文件到磁盘
+
+主从复制的配置：
+环境准备：
+	clone服务器，得到一个克隆机
+	修改克隆机的IP地址： vi /etc/sysconfig/network-scripts/ifcfg-enp0s3
+	修改克隆机的hostname: vi /etc/sysconfig/network
+	
+复制redis到slave节点
+	scp -r /usr/local/redis-3.2.11 root@node2:/usr/local
+	scp -r /usr/local/redis root@node2:/usr/local
+	
+	# a 文件属性等；v 详细信息； z 压缩；  r 递归复制
+	rsync -avzr /usr/local/redis-3.2.11 root@node3:/usr/local
+	rsync -avzr /usr/local/redis root@node3:/usr/local
+
+删除从master节点拷贝过来的rdb文件（如果有）
+	rm -f /usr/local/redis/etc/dump.rdb
+
+修改slave节点的配置文件：
+	/usr/local/redis/etc/redis.conf
+	1、slaveof <masterip> <masterport>
+	2、masterauth <master-password>  # 如果master设置了密码，则slave需要设置此项
+		
+
+使用info命令role角色，即可知道当前实例是主服务还是从服务。
+	master上执行info
+	127.0.0.1:6379> info replication
+		# Replication
+		role:master
+		connected_slaves:2
+		slave0:ip=192.168.1.202,port=6379,state=online,offset=463,lag=0
+		slave1:ip=192.168.1.203,port=6379,state=online,offset=463,lag=1
+	
+	slave上执行info
+	127.0.0.1:6379> info replication
+		# Replication
+		role:slave
+		master_host:192.168.1.201
+		master_port:6379
+		master_link_status:up
+	
+---------------------------------------------------------
+【哨兵 - redis2.x版本对高可用集群的实现方案】
+哨兵的作用
+监控redis系统的运行状态，其主要的作用如下；
+1、监控主节点和从节点是否运行正常；
+2、主节点故障时，可自动将slave节点提升为主节点，实现主从自动切换；
+
+有了主从复制的实现之后，如果想对主从节点进行监控，可以通过哨兵来完成。在2.8版本以后，哨兵功能才开始变得稳定。
+注意：为了避免哨兵的单点问题，生产环境中哨兵也需要配置多个（比如，每个slave节点上部署一个哨兵，避免哨兵出现单点故障）。
+一主、两从、三哨兵的集群模式： https://redis.io/topics/sentinel
+
+Example 2: basic setup with three boxes
+M: master
+R: replica
+S: sentinel
+
+       +----+
+       | M1 |
+       | S1 |
+       +----+
+          |
++----+    |    +----+
+| R2 |----+----| R3 |
+| S2 |         | S3 |
++----+         +----+
+
+Configuration: quorum = 2 # 表示至少2个哨兵认可master不可达，才开始选举新的master节点，开始failover流程。
+
+实现步骤：
+分别在master和两个slave节点部署哨兵，也就是说要部署三个sentinel来监控主节点。
+另外，sentinel在进行failover时，会在运行时自动修改sentinel.conf配置文件，来标识新的master和slave的关系！！！
+
+1、复制sentinel.conf到/usr/local/redis/etc中
+	cp /usr/local/redis-3.2.11/sentinel.conf /usr/local/redis/etc
+	
+2、修改sentinel.conf文件
+	port 26379				#哨兵端口
+	bind 192.168.1.203		#绑定ip
+	protected-mode no		#关闭保护模式
+	dir /usr/local/redis/etc	#哨兵工作目录
+	
+	# 名称、主节点ip、哨兵对master已经宕机进行投票(最少多少票可以认定master已经宕机)
+	sentinel monitor mymaster 192.168.1.201 6379 2	
+	
+	# 哨兵判定master节点不可达的超时时间
+	sentinel down-after-milliseconds mymaster 5000
+	
+	# 故障转移的超时时间（默认3分钟）
+	sentinel failover-timeout mymaster 180000
+	
+	# 设置在故障转移后同步更新配置为使用新master的slave数量（同步更新时此slave不可用）
+	sentinel parallel-syncs mymaster 1
+	
+	# 以下参数有待实验
+	# redis主从节点的密码（使用哨兵，要求主从节点密码必须相同）
+		sentinel auth-pass mymaster 123456
+	
+	# 指定一个通知脚本，当发生任何哨兵事件大于warning级别时，向管理员发出通知（邮件、短信等），若开启，则脚本必须存在。
+		# sentinel notification-script mymaster /var/redis/notify.sh 
+
+修改完成后，查看配置文件中所有启用的配置：
+	egrep "^\w" sentinel.conf
+	
+3、启动哨兵（在slave节点192.168.1.202启动哨兵）
+	cd /usr/local/redis
+	#后台运行
+	bin/redis-server etc/sentinel.conf --sentinel &
+
+4、查看sentinel哨兵
+	/usr/local/redis/bin/redis-cli info sentinel
+	# 指定ip和端口，可在任意redis节点上查看其它节点的信息
+	/usr/local/redis/bin/redis-cli -h 192.168.1.202 -p 26379 info sentinel
+
+5、关闭master主节点，查看集群信息
+	/usr/local/redis/bin/redis-cli -h 192.168.1.201 -p 6379 shutdown
+
+	# sentinel检测到master宕机
+	+sdown master mymaster 192.168.1.201 6379
+	
+	# sentinel检测到之前宕机的节点恢复，从新以slave身份加入到当前主从集群中
+	-sdown slave 192.168.1.201:6379 192.168.1.201 6379 @ mymaster 192.168.1.203 6379
+
+
+【sentinel实现故障转移实验，遇到的问题】
+
+问题1、
+现象：
+	仅在一个slave节点上部署了sentinel，在关闭master节点后，sentinel没有进行投票选举。
+解决办法：
+	部署3个sentinel。在master节点和slave节点分别部署一个sentinel。
+	
+问题2、
+现象：
+	关闭master节点后，sentinel检测到了master宕机，但是没有进行投票选举，没有执行failover故障转移。
+原因：
+	sentinel的配置中，绑定的ip地址不对，默认bind 127.0.0.1，导致sentinel之间是无法通信，因此无法进行选举。
+解决办法：
+	绑定sentinel监听内网ip，比如 bind 192.168.1.202
+	关闭保护模式	 protected-mode no
+
+	

@@ -1,0 +1,114 @@
+
+CentOS7 上安装 MongoDB
+版本 - 3.2.4
+
+【下载】
+cd /usr/local/software/
+
+wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-rhel70-3.2.4.tgz
+
+# 或者，从windows下载后，上传到服务器
+# scp mongodb-linux-x86_64-rhel70-3.2.4.tgz root@192.168.1.201:/usr/local/software/
+
+
+# 解压
+tar -zxvf mongodb-linux-x86_64-rhel70-3.2.4.tgz -C /usr/local/
+
+
+【配置】
+# 设置软连接
+ln -s /usr/local/mongodb-linux-x86_64-rhel70-3.2.4 /usr/local/mongodb
+
+# 创建数据存储目录
+mkdir -p /usr/local/mongodb/data/{db,logs}
+
+cd /usr/local/mongodb/bin
+
+vi mongodb.conf
+
+### Start
+dbpath = /usr/local/mongodb/data/db
+
+logpath = /usr/local/mongodb/data/logs/mongodb.log
+
+port = 27017
+
+# run as daemonize
+fork = true
+
+# allow visit from http
+nohttpinterface = false
+
+### End
+
+
+【启动】
+
+bin/mongod --config mongodb.conf
+
+# 查看 mongodb 进程
+ps aux |grep mongodb
+
+# 检查端口是否已被监听  
+netstat -tnlp | grep 27017 
+
+# 查看 mongodb 服务的运行日志
+tail -f data/logs/mongodb.log 
+
+------
+2017-12-21T22:41:55.205+0800 I CONTROL  [initandlisten] MongoDB starting : pid=2754 port=27017 dbpath=/usr/local/mongodb/data/db 64-bit host=node1.clonegod.com
+
+2017-12-21T22:41:55.427+0800 I NETWORK  [websvr] admin web console waiting for connections on port 28017
+2017-12-21T22:41:55.452+0800 I NETWORK  [initandlisten] waiting for connections on port 27017
+
+
+
+【客户端】
+
+# 浏览器客户端
+http://node1.clonegod.com:28017/
+http://192.168.1.201:28017/
+
+
+# shell 客户端
+/usr/local/mongodb/bin/mongo
+
+# 默认连接至 test 数据库
+> db.version()
+3.2.4
+> 
+> use test
+switched to db test
+
+# 插入
+> db.users.insert({"name":"Alice", "age":20})
+WriteResult({ "nInserted" : 1 })
+> 
+> db.users.insert({"name":"Bob", "age":22})
+WriteResult({ "nInserted" : 1 })
+
+
+# 查询
+> db.users.find({"name":"Alice"})
+{ "_id" : ObjectId("5a3bca9ed60897f4a137d74b"), "name" : "Alice", "age" : 20 }
+> 
+> db.users.find({"age":22})
+{ "_id" : ObjectId("5a3bcab1d60897f4a137d74c"), "name" : "Bob", "age" : 22 }
+
+
+# 更新
+> db.users.update({"name": "Alice"}, {"name":"Alice_V2", "age": 22})
+WriteResult({ "nMatched" : 1, "nUpserted" : 0, "nModified" : 1 })
+
+> db.users.find({"age":22})
+{ "_id" : ObjectId("5a3bca9ed60897f4a137d74b"), "name" : "Alice_V2", "age" : 22 }
+{ "_id" : ObjectId("5a3bcab1d60897f4a137d74c"), "name" : "Bob", "age" : 22 }
+
+# 删除
+> db.users.remove({"age":22})
+WriteResult({ "nRemoved" : 2 })
+
+# 退出
+> exit
+bye
+

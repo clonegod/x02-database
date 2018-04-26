@@ -1,0 +1,189 @@
+索引操作
+
+1、数据准备
+function randomNum(Min, Max) {
+	var Range = Max - Min;
+	var Rand = Math.random();
+	return (Min + Math.round(Rand * Range));
+}
+
+function getUser() {
+	var user = {};
+	user.birth = randomNum(1980,2017) + "-" + randomNum(1,12) + "-" + randomNum(1,30);
+	user.name = "Alice" + randomNum(1,9999999);
+	return user;
+}
+
+# 插入100W个文档
+> db.users.drop();
+true
+
+> db.users.count()
+0
+
+> for( var i=0; i<1000000; i++) {
+... db.users.insert(getUser());
+... }
+WriteResult({ "nInserted" : 1 })
+
+> db.users.count()
+1000000
+>
+
+
+
+2、性能分析函数（explain）
+> db.users.find({"name":"Alice"+10000}).explain()
+	"queryPlanner" : {
+        "plannerVersion" : 1,
+        "namespace" : "test.users",
+        "indexFilterSet" : false,
+        "parsedQuery" : {
+                "name" : {
+                        "$eq" : "Alice10000"
+                }
+        },
+        "winningPlan" : {
+                "stage" : "COLLSCAN",	###############
+                "filter" : {
+                        "name" : {
+                                "$eq" : "Alice10000"
+                        }
+                },
+                "direction" : "forward"
+        },
+        "rejectedPlans" : [ ]
+	}
+	
+	
+> db.users.find({"name":"Alice"+10000}, {"birth":"1989-12-15"}).explain()
+        "queryPlanner" : {
+                "plannerVersion" : 1,
+                "namespace" : "test.users",
+                "indexFilterSet" : false,
+                "parsedQuery" : {
+                        "name" : {
+                                "$eq" : "Alice10000"
+                        }
+                },
+                "winningPlan" : {
+                        "stage" : "PROJECTION",	###############
+                        "transformBy" : {
+                                "birth" : "1989-12-15"
+                        },
+                        "inputStage" : {
+                                "stage" : "COLLSCAN",	###############
+                                "filter" : {
+                                        "name" : {
+                                                "$eq" : "Alice10000"
+                                        }
+                                },
+                                "direction" : "forward"
+                        }
+                },
+                "rejectedPlans" : [ ]
+
+	
+
+3、创建索引
+	#普通一索引
+	# ”1“：表示按照name进行升序，”-1“：表示按照name进行降序。
+	> db.users.ensureIndex({"name":1})
+	{
+			"createdCollectionAutomatically" : false,
+			"numIndexesBefore" : 1,
+			"numIndexesAfter" : 2,
+			"ok" : 1
+	}	
+	
+	> db.users.find({"name":"Alice"+10000}).explain()
+        "queryPlanner" : {
+                "plannerVersion" : 1,
+                "namespace" : "test.users",
+                "indexFilterSet" : false,
+                "parsedQuery" : {
+                        "name" : {
+                                "$eq" : "Alice10000"
+                        }
+                },
+                "winningPlan" : {
+                        "stage" : "FETCH",	###############
+                        "inputStage" : {
+                                "stage" : "IXSCAN",	###############
+                                "keyPattern" : {
+                                        "name" : 1
+                                },
+                                "indexName" : "name_1",
+                                "isMultiKey" : false,
+                                "multiKeyPaths" : {
+                                        "name" : [ ]
+                                },
+                                "isUnique" : false,
+                                "isSparse" : false,
+                                "isPartial" : false,
+                                "indexVersion" : 2,
+                                "direction" : "forward",
+                                "indexBounds" : {
+                                        "name" : [
+                                                "[\"Alice10000\", \"Alice10000\"]"
+                                        ]
+                                }
+                        }
+                },
+                "rejectedPlans" : [ ]
+	
+	#唯一索引
+	# 如果历史数据中，要创建唯一索引的列存在重复记录，则创建唯一索引会失败。
+	> db.users.ensureIndex({"name":1}, {"unique":true})
+	
+	#组合索引
+	# 有时候我们的查询不是单条件的，可能是多条件，比如查找出生在‘1989-3-2’名字叫‘jack’的同学，那么我们可以建立“姓名”和"生日“的联合索引来加速查询。
+	# name跟birthday的不同，建立的索引也不同，升序和降序的顺序不同都会产生不同的索引
+	> db.users.ensureIndex({"name":1, "birth":1})
+	> db.users.ensureIndex({"birth":1, "name":1})
+	
+		
+4、查看索引
+> db.users.getIndexes()
+[
+        {
+                "v" : 2,
+                "key" : {
+                        "_id" : 1
+                },
+                "name" : "_id_",	########
+                "ns" : "test.users"
+        },
+        {
+                "v" : 2,
+                "key" : {
+                        "name" : 1
+                },
+                "name" : "name_1",	########
+                "ns" : "test.users"
+        },
+        {
+                "v" : 2,
+                "key" : {
+                        "name" : 1,
+                        "birth" : 1
+                },
+                "name" : "name_1_birth_1",	########
+                "ns" : "test.users"
+        },
+        {
+                "v" : 2,
+                "key" : {
+                        "birth" : 1,
+                        "name" : 1
+                },
+                "name" : "birth_1_name_1",	########
+                "ns" : "test.users"
+        }
+]
+
+
+5、删除索引
+db.users.dropIndex("name_1")
+db.users.dropIndex("name_1_birth_1")
+db.users.dropIndex("birth_1_name_1")
